@@ -17,8 +17,8 @@ on:
         options:
           - jammy
           - noble
-          - bullseye
           - bookworm
+          - bullseye
       armbian_board:
         description: "Select device board."
         required: false
@@ -44,6 +44,7 @@ on:
           - emb3531
           - fine3399
           - firefly-rk3399
+          - fmx1-pro
           - jp-tvbox
           - h28k
           - h66k
@@ -70,6 +71,7 @@ on:
           - r68s
           - renegade-rk3328
           - rk3318-box
+          - rock-3a
           - rock5b
           - rock5c
           - ruisen-box
