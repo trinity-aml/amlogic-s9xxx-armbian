@@ -133,12 +133,6 @@ runs:
             cd ${{ github.action_path }}
             echo -e "Starting Armbian rebuild..."
 
-            # Set builder custom signature
-            [[ -n "${{ inputs.builder_name }}" ]] && {
-                builder_name="${{ inputs.builder_name }}"
-                builder_name="${builder_name// /-}"
-            }
-
             armbian_file="${{ inputs.armbian_path }}"
             armbian_filename="${armbian_file##*/}"
             armbian_filepath="build/output/images"
@@ -208,6 +202,12 @@ runs:
                 echo -e "Using the default Armbian rebuild files."
             fi
 
+            # Set builder custom signature
+            [[ -n "${{ inputs.builder_name }}" ]] && {
+                builder_name="${{ inputs.builder_name }}"
+                builder_name="${builder_name// /-}"
+            }
+
             cd ${{ github.action_path }}
             echo -e "Starting to rebuild Armbian..."
             make_command=""
@@ -255,12 +255,6 @@ runs:
             cd ${{ github.action_path }}
             echo -e "Starting kernel compilation..."
 
-            # Set kernel custom signature
-            [[ -n "${{ inputs.kernel_sign }}" ]] && {
-                kernel_sign="${{ inputs.kernel_sign }}"
-                kernel_sign="${kernel_sign// /-}"
-            }
-
             # Custom kernel config files
             config_filepath="compile-kernel/tools/config"
             [[ -d "${config_filepath}" ]] || mkdir -p ${config_filepath}
@@ -292,6 +286,12 @@ runs:
             else
                 echo -e "No custom kernel patches provided."
             fi
+
+            # Set kernel custom signature
+            [[ -n "${{ inputs.kernel_sign }}" ]] && {
+                kernel_sign="${{ inputs.kernel_sign }}"
+                kernel_sign="${kernel_sign// /-}"
+            }
 
             echo -e "Building kernel compilation command."
             make_command=""
