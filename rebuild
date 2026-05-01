@@ -515,7 +515,7 @@ query_kernel() {
                         sort -urV | head -n 1
                 )"
 
-                if [[ "${?}" -eq 0 && -n "${latest_version}" ]]; then
+                if [[ -n "${latest_version}" ]]; then
                     tmp_arr_kernels[${i}]="${latest_version}"
                 else
                     tmp_arr_kernels[${i}]="${kernel_var}"
@@ -536,14 +536,14 @@ query_kernel() {
 
 check_kernel() {
     [[ -n "${1}" ]] && check_path="${1}" || error_msg "Invalid kernel path to check."
-    check_files=($(cat "${check_path}/sha256sums" | awk '{print $2}'))
+    check_files=($(awk '{print $2}' "${check_path}/sha256sums"))
     for cf in "${check_files[@]}"; do
         {
             # Check if file exists
             [[ -s "${check_path}/${cf}" ]] || error_msg "The [ ${cf} ] file is missing."
-            # Check if the file sha256sum is correct
+            # Check if the file sha256sum is correct (exact filename match, no substring confusion)
             tmp_sha256sum="$(sha256sum "${check_path}/${cf}" | awk '{print $1}')"
-            tmp_checkcode="$(cat ${check_path}/sha256sums | grep ${cf} | awk '{print $1}')"
+            tmp_checkcode="$(awk -v f="${cf}" '$2==f {print $1}' "${check_path}/sha256sums")"
             [[ "${tmp_sha256sum}" == "${tmp_checkcode}" ]] || error_msg "[ ${cf} ]: sha256sum verification failed."
         }
     done
@@ -745,8 +745,7 @@ make_image() {
 
     # echo -e "${INFO} The [ ${board} ] Armbian image partition status: [ skip:${skip_mb} / boot:${boot_mb} / rootfs:${root_mb} ] MiB."
 
-    # Set Armian file name. Include hour-minute and a short uniqueness suffix so two
-    # boards/kernels built in the same day cannot silently overwrite each other.
+    # Set Armian file name
     armbian_filename="Armbian_${armbian_rebuild_version}_${PLATFORM}_${board}_${release_codename}_${kernel}_${os_type}_$(date +"%Y.%m.%d").img"
     build_image_file="${tmp_outpath}/${armbian_filename}"
     rm -f "${build_image_file}"
@@ -1229,38 +1228,38 @@ refactor_rootfs() {
     )
 
     # Add custom Armbian information
-    echo "PLATFORM='${PLATFORM}'" >>${ophub_release_file}
-    echo "VERSION_CODEID='${release_codeid}'" >>${ophub_release_file}
-    echo "VERSION_CODENAME='${release_codename}'" >>${ophub_release_file}
-    echo "MODEL_ID='${MODEL_ID}'" >>${ophub_release_file}
-    echo "MODEL_NAME='${MODEL_NAME}'" >>${ophub_release_file}
-    echo "SOC='${SOC}'" >>${ophub_release_file}
-    echo "FDTFILE='${FDTFILE}'" >>${ophub_release_file}
-    echo "FAMILY='${FAMILY}'" >>${ophub_release_file}
-    echo "BOARD='${board}'" >>${ophub_release_file}
-    echo "KERNEL_REPO='${kernel_repo}'" >>${ophub_release_file}
-    echo "KERNEL_TAGS='${conf_kernel_tags}'" >>${ophub_release_file}
-    echo "KERNEL_VERSION='${kernel}'" >>${ophub_release_file}
-    echo "KERNEL_SIGNATURE='${kernel_signature}'" >>${ophub_release_file}
-    echo "DOWNLOAD_TYPE='deb'" >>${ophub_release_file}
-    echo "KERNEL_BACKUP='yes'" >>${ophub_release_file}
-    echo "BOOT_CONF='${BOOT_CONF}'" >>${ophub_release_file}
-    echo "ROOTFS_TYPE='${rootfs_type}'" >>${ophub_release_file}
-    echo "DISK_TYPE='usb'" >>${ophub_release_file}
-    echo "AMPART_STATUS='no'" >>${ophub_release_file}
-    echo "MLUBOOT_STATUS='no'" >>${ophub_release_file}
-    echo "MAINLINE_UBOOT='${RECORD_MAINLINE_UBOOT}'" >>${ophub_release_file}
-    echo "BOOTLOADER_IMG='${RECORD_BOOTLOADER_IMG}'" >>${ophub_release_file}
-    if [[ "${PLATFORM}" == "rockchip" ]]; then
-        echo "TRUST_IMG='${RECORD_TRUST_IMG}'" >>${ophub_release_file}
-    elif [[ "${PLATFORM}" == "amlogic" ]]; then
-        echo "UBOOT_OVERLOAD='${UBOOT_OVERLOAD}'" >>${ophub_release_file}
-    fi
-    echo "BUILD_REPOSITORY='github.com/armbian/build'" >>${ophub_release_file}
-    echo "REBUILD_REPOSITORY='github.com/ophub/amlogic-s9xxx-armbian'" >>${ophub_release_file}
-    echo "CONTRIBUTORS='${CONTRIBUTORS}'" >>${ophub_release_file}
-    echo "BUILDER_NAME='${builder_name}'" >>${ophub_release_file}
-    echo "PACKAGED_DATE='$(date +%Y-%m-%d)'" >>${ophub_release_file}
+    release_lines=(
+        "PLATFORM='${PLATFORM}'"
+        "VERSION_CODEID='${release_codeid}'"
+        "VERSION_CODENAME='${release_codename}'"
+        "MODEL_ID='${MODEL_ID}'"
+        "MODEL_NAME='${MODEL_NAME}'"
+        "SOC='${SOC}'"
+        "FDTFILE='${FDTFILE}'"
+        "FAMILY='${FAMILY}'"
+        "BOARD='${board}'"
+        "KERNEL_REPO='${kernel_repo}'"
+        "KERNEL_TAGS='${conf_kernel_tags}'"
+        "KERNEL_VERSION='${kernel}'"
+        "KERNEL_SIGNATURE='${kernel_signature}'"
+        "DOWNLOAD_TYPE='deb'"
+        "KERNEL_BACKUP='yes'"
+        "BOOT_CONF='${BOOT_CONF}'"
+        "ROOTFS_TYPE='${rootfs_type}'"
+        "DISK_TYPE='usb'"
+        "AMPART_STATUS='no'"
+        "MLUBOOT_STATUS='no'"
+        "MAINLINE_UBOOT='${RECORD_MAINLINE_UBOOT}'"
+        "BOOTLOADER_IMG='${RECORD_BOOTLOADER_IMG}'"
+        "BUILD_REPOSITORY='github.com/armbian/build'"
+        "REBUILD_REPOSITORY='github.com/ophub/amlogic-s9xxx-armbian'"
+        "CONTRIBUTORS='${CONTRIBUTORS}'"
+        "BUILDER_NAME='${builder_name}'"
+        "PACKAGED_DATE='$(date +%Y-%m-%d)'"
+    )
+    [[ "${PLATFORM}" == "rockchip" ]] && release_lines+=("TRUST_IMG='${RECORD_TRUST_IMG}'")
+    [[ "${PLATFORM}" == "amlogic" ]] && release_lines+=("UBOOT_OVERLOAD='${UBOOT_OVERLOAD}'")
+    printf '%s\n' "${release_lines[@]}" >>${ophub_release_file}
 
     sync && sleep 3
 }
