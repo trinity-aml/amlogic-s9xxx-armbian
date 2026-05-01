@@ -585,7 +585,7 @@ compile_env() {
     deb_path="${output_path}/deb-${kernel_version}"
 
     # Create a temp directory
-    rm -rf ${output_path}/{boot/,dtb/,modules/,header/,libc_headers/,${kernel_version}/,deb-${kernel_version}/}
+    rm -rf ${output_path}/{boot/,dtb/,modules/,header/,libc_headers/,${kernel_version}/,deb-${kernel_version}/} || true
     mkdir -p ${output_path}/{boot/,dtb/{allwinner/,amlogic/,rockchip/},modules/,header/,libc_headers/,${kernel_version}/,deb-${kernel_version}/}
 
     cd ${kernel_path}/${local_kernel_path}
@@ -672,8 +672,11 @@ compile_dtbs() {
 
     # Make dtbs
     echo -e "${STEPS} Compiling dtbs [ ${local_kernel_path} ]..."
-    make ${MAKE_SET_STRING} CC="${CC}" LD="${LD}" dtbs -j${PROCESS}
-    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} The dtbs compiled successfully."
+    if make ${MAKE_SET_STRING} CC="${CC}" LD="${LD}" dtbs -j${PROCESS}; then
+        echo -e "${SUCCESS} The dtbs compiled successfully."
+    else
+        error_msg "dtbs compilation failed."
+    fi
 }
 
 compile_kernel() {
@@ -693,10 +696,20 @@ compile_kernel() {
     make ${silent_print} ${MAKE_SET_STRING} CC="${CC}" LD="${LD}" INSTALL_MOD_PATH=${output_path}/modules modules_install
     [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} Modules installed successfully." || error_msg "Modules installation failed."
 
+    # Get the real kernel version from the installed modules, and adjust the kernel output name if necessary
+    real_kver="$(ls -1 ${output_path}/modules/lib/modules/ 2>/dev/null | head -n 1)"
+    if [[ -n "${real_kver}" && "${real_kver}" != "${kernel_outname}" ]]; then
+        echo -e "${INFO} Adjusting kernel output name from [ ${kernel_outname} ] to [ ${real_kver} ] (per modules_install)."
+        kernel_outname="${real_kver}"
+    fi
+
     # Strip debug information
     STRIP="${CROSS_COMPILE}strip"
-    find ${output_path}/modules -name "*.ko" -print0 | xargs -0 ${STRIP} --strip-debug 2>/dev/null
-    [[ "${?}" -eq "0" ]] && echo -e "${SUCCESS} Modules stripped successfully." || echo -e "${WARNING} Modules stripping failed."
+    if find ${output_path}/modules -name "*.ko" -print0 | xargs -0 "${STRIP}" --strip-debug 2>/dev/null; then
+        echo -e "${SUCCESS} Modules stripped successfully."
+    else
+        echo -e "${WARNING} Modules stripping failed."
+    fi
 
     # Collect kernel headers for building external modules
     echo -e "${STEPS} Collecting kernel headers..."
@@ -1057,8 +1070,9 @@ done
 
 # Remove old linux-image packages from dpkg database (background, wait for dpkg lock release)
 (
-    # Wait for the parent dpkg process to release the lock
-    while fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done
+    # Wait for the parent dpkg process to release BOTH the dpkg lock and the apt frontend lock
+    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 \
+       || fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 3; done
     for pkg in $(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -E "^linux-image-"); do
         [[ "${pkg}" == "CURRENT_IMAGE_PKG" ]] && continue
         dpkg --purge --force-depends "${pkg}" 2>/dev/null || true
@@ -1145,7 +1159,9 @@ set -e
 
 # Remove old linux-libc-dev packages
 (
-    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
+    # Wait for the parent dpkg process to release BOTH the dpkg lock and the apt frontend lock
+    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 \
+       || fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 3; done
     for pkg in $(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -E '^linux-libc-dev-'); do
         [[ "${pkg}" == "CURRENT_LIBC_PKG" ]] && continue
         dpkg --purge --force-depends "${pkg}" 2>/dev/null || true
@@ -1269,7 +1285,9 @@ done
 
 # Remove old linux-headers packages from dpkg database (background, wait for dpkg lock release)
 (
-    while fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done
+    # Wait for the parent dpkg process to release BOTH the dpkg lock and the apt frontend lock
+    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 \
+       || fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 3; done
     for pkg in $(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -E "^linux-headers-"); do
         [[ "${pkg}" == "CURRENT_HEADERS_PKG" ]] && continue
         dpkg --purge --force-depends "${pkg}" 2>/dev/null || true
@@ -1479,6 +1497,7 @@ loop_recompile() {
 
         # Show compilation start information
         echo -e "${INFO} Armbian space usage before compilation: \n$(df -hT ${kernel_path}) \n"
+        echo -e "${INFO} Armbian memory before compilation: \n$(free -h) \n"
 
         # Check disk space size
         echo -ne "(${j}) Compiling kernel [\033[92m ${kernel_version} \033[0m]. "
